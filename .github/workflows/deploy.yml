@@ -23,7 +23,7 @@ jobs:
       - name: Checkout gwdocs
         uses: actions/checkout@v4
         with:
-          repository: graphwright/gwdocs
+          repository: graphwright/docs
           path: gwdocs
 
       # Step 3: Build mkdocs
