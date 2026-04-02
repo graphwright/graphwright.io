@@ -8,7 +8,7 @@ API server container.
 This README will become the front matter for the website which means
 it will need links for different things to be provided.
 
-- The markdown documents in the `gwdocs` repository.
+- The markdown documents in the `docs` repository.
 - The FastAPI stuff including the MCP server.
 - The graph visualization.
 - A demo chat using Claude or some other LLM accessing the MCP server.

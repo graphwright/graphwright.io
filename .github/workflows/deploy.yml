@@ -19,23 +19,23 @@ jobs:
         with:
           path: graphwright.io
 
-      # Step 2: Check out gwdocs
-      - name: Checkout gwdocs
+      # Step 2: Check out docs
+      - name: Checkout docs
         uses: actions/checkout@v4
         with:
           repository: graphwright/docs
-          path: gwdocs
+          path: docs
 
       # Step 3: Build mkdocs
       - name: Build docs
-        working-directory: gwdocs
+        working-directory: docs
         run: |
           pip install mkdocs mkdocs-material
           mkdocs build
 
       # Step 4: Copy site/ into graphwright image context
       - name: Copy docs site into image context
-        run: cp -r gwdocs/site graphwright.io/site
+        run: cp -r docs/site graphwright.io/site
 
       # Step 5: Build Docker image
       - name: Build Docker image
