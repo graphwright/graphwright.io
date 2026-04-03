@@ -133,13 +133,14 @@ services:
       start_period: 15s
 
   bundle-init:
-    image: curlimages/curl:latest
+    image: alpine:latest
     volumes:
       - bundle:/bundle
     command: >
       sh -c "
         [ -f /bundle/manifest.json ] && echo 'bundle already present, skipping' && exit 0;
         echo 'downloading bundle...';
+        apk add --no-cache curl &&
         curl -fsSL https://github.com/graphwright/medlit_bundle/releases/latest/download/bundle.tar.gz
         | tar -xz -C /bundle
       "
