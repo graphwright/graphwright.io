@@ -6,7 +6,6 @@ on:
 
 env:
   REGISTRY: registry.digitalocean.com/graphwright
-  IMAGE: registry.digitalocean.com/graphwright/graphwright-api
 
 jobs:
   deploy:
@@ -14,20 +13,39 @@ jobs:
     environment: BuildEnv
 
     steps:
-      # Step 1: Check out graphwright
+      # -----------------------------------------------------------------------
+      # Check out all repos into a flat layout that mirrors the local dev tree:
+      #   graphwright.io/   identity-server/   kgraph/   medlit/   docs/  ...
+      # -----------------------------------------------------------------------
       - name: Checkout graphwright.io
         uses: actions/checkout@v4
         with:
           path: graphwright.io
 
-      # Step 2: Check out docs
+      - name: Checkout kgraph
+        uses: actions/checkout@v4
+        with:
+          repository: graphwright/kgraph
+          path: kgraph
+
+      - name: Checkout identity-server
+        uses: actions/checkout@v4
+        with:
+          repository: graphwright/identity-server
+          path: identity-server
+
+      - name: Checkout medlit
+        uses: actions/checkout@v4
+        with:
+          repository: graphwright/medlit
+          path: medlit
+
       - name: Checkout docs
         uses: actions/checkout@v4
         with:
           repository: graphwright/docs
           path: docs
 
-      # Step 3: Check out the three books
       - name: Checkout kg-book
         uses: actions/checkout@v4
         with:
@@ -46,7 +64,9 @@ jobs:
           repository: graphwright/identity-book
           path: identity-book
 
-      # Step 4: Install LaTeX toolchain and pandoc for PDF builds
+      # -----------------------------------------------------------------------
+      # Build docs site (MkDocs + book PDFs)
+      # -----------------------------------------------------------------------
       - name: Install PDF build dependencies
         run: |
           sudo apt-get update -qq
@@ -60,7 +80,6 @@ jobs:
             biber \
             make
 
-      # Step 5: Build book PDFs
       - name: Build kg-book PDF
         working-directory: kg-book
         run: make text.pdf || true
@@ -73,7 +92,6 @@ jobs:
         working-directory: identity-book
         run: make text.pdf || true
 
-      # Step 6: Collect PDFs into books/ directory
       - name: Collect PDFs
         run: |
           mkdir -p graphwright.io/books
@@ -81,69 +99,106 @@ jobs:
           cp bfs-ql-book/text.pdf graphwright.io/books/bfs-ql.pdf || true
           cp identity-book/text.pdf graphwright.io/books/the-identity-server.pdf || true
 
-      # Step 7: Build mkdocs
-      - name: Build docs
+      - name: Build docs site
         working-directory: docs
         run: |
           pip install mkdocs mkdocs-material
           mkdocs build
 
-      # Step 8: Copy site/ and books/ into graphwright image context
-      - name: Copy docs site into image context
+      - name: Copy docs site into graphwright.io image context
         run: |
           cp -r docs/site graphwright.io/site
           cp -r graphwright.io/books graphwright.io/site/books
 
-      # Step 9: Build Docker image
-      - name: Build Docker image
-        working-directory: graphwright.io
-        run: docker build -t $IMAGE:${{ github.sha }} -t $IMAGE:latest .
-
-      # Step 10: Push to DO container registry
-      - name: Push to DO registry
+      # -----------------------------------------------------------------------
+      # Log in to DO container registry
+      # -----------------------------------------------------------------------
+      - name: Log in to DO registry
         run: |
           docker login registry.digitalocean.com \
             --username ${{ secrets.DO_API_TOKEN }} \
             --password ${{ secrets.DO_API_TOKEN }}
-          docker push $IMAGE:${{ github.sha }}
-          docker push $IMAGE:latest
 
-      # Step 11: SSH to droplet, pull and restart
-      #- name: Deploy to droplet
-      #  uses: appleboy/ssh-action@v1
-      #  with:
-      #    host: graphwright.io
-      #    username: root
-      #    key: ${{ secrets.DROPLET_SSH_KEY }}
-      #    script: |
-      #      docker login registry.digitalocean.com \
-      #        --username ${{ secrets.DO_API_TOKEN }} \
-      #        --password ${{ secrets.DO_API_TOKEN }}
-      #      docker pull ${{ env.IMAGE }}:latest
-      #      docker stop graphwright-api || true
-      #      docker rm graphwright-api || true
-      #      docker run -d \
-      #        --name graphwright-api \
-      #        --restart unless-stopped \
-      #        -p 80:8000 \
-      #        ${{ env.IMAGE }}:latest
+      # -----------------------------------------------------------------------
+      # Build and push all images
+      # The build contexts mirror the local docker-compose.yml layout, but here
+      # the working directory is the runner root where all repos are checked out.
+      # -----------------------------------------------------------------------
+      - name: Build and push docs image
+        run: |
+          docker build \
+            -t $REGISTRY/docs:${{ github.sha }} \
+            -t $REGISTRY/docs:latest \
+            graphwright.io/
+          docker push $REGISTRY/docs:${{ github.sha }}
+          docker push $REGISTRY/docs:latest
 
-      # Step 11: SSH to droplet, pull and restart
-      - name: Deploy to STAGING droplet
+      - name: Build and push api+mcpserver image
+        run: |
+          docker build \
+            -f kgraph/kgserver/Dockerfile \
+            -t $REGISTRY/kgserver:${{ github.sha }} \
+            -t $REGISTRY/kgserver:latest \
+            kgraph/
+          docker push $REGISTRY/kgserver:${{ github.sha }}
+          docker push $REGISTRY/kgserver:latest
+
+      - name: Build and push gwchat image
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_BASE_PATH=/chat \
+            -t $REGISTRY/gwchat:${{ github.sha }} \
+            -t $REGISTRY/gwchat:latest \
+            kgraph/gwchat/
+          docker push $REGISTRY/gwchat:${{ github.sha }}
+          docker push $REGISTRY/gwchat:latest
+
+      - name: Build and push identity-server image
+        run: |
+          docker build \
+            -t $REGISTRY/identity-server:${{ github.sha }} \
+            -t $REGISTRY/identity-server:latest \
+            identity-server/
+          docker push $REGISTRY/identity-server:${{ github.sha }}
+          docker push $REGISTRY/identity-server:latest
+
+      - name: Build and push medlit-domain image
+        run: |
+          docker build \
+            -f medlit/Dockerfile.domain-service \
+            -t $REGISTRY/medlit-domain:${{ github.sha }} \
+            -t $REGISTRY/medlit-domain:latest \
+            .
+          docker push $REGISTRY/medlit-domain:${{ github.sha }}
+          docker push $REGISTRY/medlit-domain:latest
+
+      # -----------------------------------------------------------------------
+      # Deploy: copy compose file + env to droplet, pull images, restart stack
+      # -----------------------------------------------------------------------
+      - name: Copy compose file and gwchat config to droplet
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 137.184.49.99
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          source: "graphwright.io/docker-compose.prod.yml,graphwright.io/gwchat-config"
+          target: /opt/graphwright
+          strip_components: 1
+
+      - name: Deploy to staging droplet
         uses: appleboy/ssh-action@v1
         with:
           host: 137.184.49.99
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
           script: |
+            set -e
+            cd /opt/graphwright
+
             docker login registry.digitalocean.com \
               --username ${{ secrets.DO_API_TOKEN }} \
               --password ${{ secrets.DO_API_TOKEN }}
-            docker pull ${{ env.IMAGE }}:latest
-            docker stop graphwright-api || true
-            docker rm graphwright-api || true
-            docker run -d \
-              --name graphwright-api \
-              --restart unless-stopped \
-              -p 80:8000 \
-              ${{ env.IMAGE }}:latest
+
+            REGISTRY=${{ env.REGISTRY }} docker compose \
+              -f docker-compose.prod.yml \
+              up -d --pull always --remove-orphans

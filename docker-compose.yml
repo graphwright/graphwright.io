@@ -1,0 +1,221 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Static docs site (MkDocs-built, served by FastAPI/uvicorn)
+  # ---------------------------------------------------------------------------
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - gw-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # Knowledge graph query API
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ../kgraph
+      dockerfile: kgserver/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/kgserver
+      BUNDLE_PATH: /bundle
+      MCP_SSE_URL: http://mcpserver:8001/sse
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      IDENTITY_SERVER_URL: http://identity-server:8080
+    volumes:
+      - bundle:/bundle:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      bundle-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - gw-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # MCP server (tool-calling interface for gwchat)
+  # ---------------------------------------------------------------------------
+  mcpserver:
+    build:
+      context: ../kgraph
+      dockerfile: kgserver/Dockerfile
+    command: ["python", "-m", "uvicorn", "mcp_main:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/kgserver
+      BUNDLE_PATH: /bundle
+      PASS1_LLM_BACKEND: ${PASS1_LLM_BACKEND:-anthropic}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      REDIS_URL: redis://redis:6379
+      IDENTITY_SERVER_URL: http://identity-server:8080
+      INGEST_PIPELINE_CLASS: ${INGEST_PIPELINE_CLASS:-}
+    volumes:
+      - bundle:/bundle:ro
+      - ingest_workspace:/app/ingest_workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      bundle-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - gw-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Chat UI (Next.js / Chainlit)
+  # ---------------------------------------------------------------------------
+  gwchat:
+    build:
+      context: ../kgraph/gwchat
+      args:
+        NEXT_PUBLIC_BASE_PATH: /chat
+    environment:
+      MCP_SSE_URL: http://mcpserver:8001/sse
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ORCHESTRATOR_MODEL: ${ORCHESTRATOR_MODEL:-claude-haiku-4-5-20251001}
+      SYNTHESIS_MODEL: ${SYNTHESIS_MODEL:-claude-sonnet-4-6}
+      GWCHAT_CONFIG: /app/config/medlit.yaml
+      MCP_CONNECT_TIMEOUT: "25"
+      LLM_MIN_REQUEST_INTERVAL_SECONDS: "3.0"
+    volumes:
+      - ./gwchat-config:/app/config:ro
+    depends_on:
+      mcpserver:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - gw-network
+
+  # ---------------------------------------------------------------------------
+  # Identity server (entity resolution, synonym detection, merge)
+  # ---------------------------------------------------------------------------
+  identity-server:
+    build:
+      context: ../identity-server
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/kgserver
+      REDIS_URL: redis://redis:6379
+      DOMAIN_SERVICE_URL: http://medlit-domain:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      medlit-domain:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - gw-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Medlit domain service (UMLS/HGNC/RxNorm/UniProt authority lookup)
+  # ---------------------------------------------------------------------------
+  medlit-domain:
+    build:
+      context: ..
+      dockerfile: medlit/Dockerfile.domain-service
+    environment:
+      UMLS_API_KEY: ${UMLS_API_KEY:-}
+      CANONICAL_ID_CACHE_PATH: /data/canonical_id_cache.json
+    volumes:
+      - canonical_id_cache:/data
+    restart: unless-stopped
+    networks:
+      - gw-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Bundle init — downloads the latest medlit_bundle release into the bundle
+  # volume before api and mcpserver start.  Skipped if bundle already populated.
+  # ---------------------------------------------------------------------------
+  bundle-init:
+    image: curlimages/curl:latest
+    volumes:
+      - bundle:/bundle
+    command: >
+      sh -c "
+        [ -f /bundle/manifest.json ] && echo 'bundle already present, skipping' && exit 0;
+        echo 'downloading bundle...';
+        curl -fsSL https://github.com/graphwright/medlit_bundle/releases/latest/download/bundle.tar.gz
+        | tar -xz -C /bundle
+      "
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: kgserver
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kgserver"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - gw-network
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - gw-network
+
+volumes:
+  pgdata:
+    driver: local
+  bundle:
+    driver: local
+  ingest_workspace:
+    driver: local
+  canonical_id_cache:
+    driver: local
+
+networks:
+  gw-network:
+    driver: bridge
