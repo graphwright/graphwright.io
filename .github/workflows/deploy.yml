@@ -113,6 +113,9 @@ jobs:
       # -----------------------------------------------------------------------
       # Log in to DO container registry
       # -----------------------------------------------------------------------
+      - name: Debug workspace layout
+        run: ls -la ${{ github.workspace }}
+
       - name: Log in to DO registry
         run: |
           docker login registry.digitalocean.com \
@@ -163,6 +166,7 @@ jobs:
           docker push $REGISTRY/identity-server:latest
 
       - name: Build and push medlit-domain image
+        working-directory: ${{ github.workspace }}
         run: |
           docker build \
             -f medlit/Dockerfile.domain-service \
