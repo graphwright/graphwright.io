@@ -27,23 +27,79 @@ jobs:
           repository: graphwright/docs
           path: docs
 
-      # Step 3: Build mkdocs
+      # Step 3: Check out the three books
+      - name: Checkout kg-book
+        uses: actions/checkout@v4
+        with:
+          repository: graphwright/kg-book
+          path: kg-book
+
+      - name: Checkout bfs-ql-book
+        uses: actions/checkout@v4
+        with:
+          repository: graphwright/bfs-ql-book
+          path: bfs-ql-book
+
+      - name: Checkout identity-book
+        uses: actions/checkout@v4
+        with:
+          repository: graphwright/identity-book
+          path: identity-book
+
+      # Step 4: Install LaTeX toolchain and pandoc for PDF builds
+      - name: Install PDF build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            pandoc \
+            texlive-xetex \
+            texlive-fonts-recommended \
+            texlive-fonts-extra \
+            texlive-latex-extra \
+            texlive-bibtex-extra \
+            biber \
+            make
+
+      # Step 5: Build book PDFs
+      - name: Build kg-book PDF
+        working-directory: kg-book
+        run: make text.pdf || true
+
+      - name: Build bfs-ql-book PDF
+        working-directory: bfs-ql-book
+        run: make text.pdf || true
+
+      - name: Build identity-book PDF
+        working-directory: identity-book
+        run: make text.pdf || true
+
+      # Step 6: Collect PDFs into books/ directory
+      - name: Collect PDFs
+        run: |
+          mkdir -p graphwright.io/books
+          cp kg-book/text.pdf graphwright.io/books/knowledge-graphs-from-unstructured-text.pdf || true
+          cp bfs-ql-book/text.pdf graphwright.io/books/bfs-ql.pdf || true
+          cp identity-book/text.pdf graphwright.io/books/the-identity-server.pdf || true
+
+      # Step 7: Build mkdocs
       - name: Build docs
         working-directory: docs
         run: |
           pip install mkdocs mkdocs-material
           mkdocs build
 
-      # Step 4: Copy site/ into graphwright image context
+      # Step 8: Copy site/ and books/ into graphwright image context
       - name: Copy docs site into image context
-        run: cp -r docs/site graphwright.io/site
+        run: |
+          cp -r docs/site graphwright.io/site
+          cp -r graphwright.io/books graphwright.io/site/books
 
-      # Step 5: Build Docker image
+      # Step 9: Build Docker image
       - name: Build Docker image
         working-directory: graphwright.io
         run: docker build -t $IMAGE:${{ github.sha }} -t $IMAGE:latest .
 
-      # Step 6: Push to DO container registry
+      # Step 10: Push to DO container registry
       - name: Push to DO registry
         run: |
           docker login registry.digitalocean.com \
@@ -52,7 +108,7 @@ jobs:
           docker push $IMAGE:${{ github.sha }}
           docker push $IMAGE:latest
 
-      # Step 7: SSH to droplet, pull and restart
+      # Step 11: SSH to droplet, pull and restart
       #- name: Deploy to droplet
       #  uses: appleboy/ssh-action@v1
       #  with:
@@ -72,7 +128,7 @@ jobs:
       #        -p 80:8000 \
       #        ${{ env.IMAGE }}:latest
 
-      # Step 7: SSH to droplet, pull and restart
+      # Step 11: SSH to droplet, pull and restart
       - name: Deploy to STAGING droplet
         uses: appleboy/ssh-action@v1
         with:
