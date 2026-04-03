@@ -11,6 +11,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: BuildEnv
 
     steps:
       # Step 1: Check out graphwright
