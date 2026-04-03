@@ -71,3 +71,23 @@ jobs:
       #        --restart unless-stopped \
       #        -p 80:8000 \
       #        ${{ env.IMAGE }}:latest
+
+      # Step 7: SSH to droplet, pull and restart
+      - name: Deploy to STAGING droplet
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 137.184.49.99
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            docker login registry.digitalocean.com \
+              --username ${{ secrets.DO_API_TOKEN }} \
+              --password ${{ secrets.DO_API_TOKEN }}
+            docker pull ${{ env.IMAGE }}:latest
+            docker stop graphwright-api || true
+            docker rm graphwright-api || true
+            docker run -d \
+              --name graphwright-api \
+              --restart unless-stopped \
+              -p 80:8000 \
+              ${{ env.IMAGE }}:latest
