@@ -2,6 +2,8 @@ services:
   docs:
     image: ${REGISTRY}/docs:latest
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8000"
     networks:
       - gw-network
     healthcheck:
@@ -23,6 +25,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
       IDENTITY_SERVER_URL: http://identity-server:8080
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
       - bundle:/bundle:ro
     depends_on:
@@ -52,6 +56,8 @@ services:
       REDIS_URL: redis://redis:6379
       IDENTITY_SERVER_URL: http://identity-server:8080
       INGEST_PIPELINE_CLASS: ${INGEST_PIPELINE_CLASS:-}
+    ports:
+      - "127.0.0.1:8001:8001"
     volumes:
       - bundle:/bundle:ro
       - ingest_workspace:/app/ingest_workspace
@@ -83,6 +89,8 @@ services:
       GWCHAT_CONFIG: /app/config/medlit.yaml
       MCP_CONNECT_TIMEOUT: "25"
       LLM_MIN_REQUEST_INTERVAL_SECONDS: "3.0"
+    ports:
+      - "127.0.0.1:3000:3000"
     volumes:
       - ./gwchat-config:/app/config:ro
     depends_on:
