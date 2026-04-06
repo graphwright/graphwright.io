@@ -1,9 +1,14 @@
 services:
   docs:
     image: ${REGISTRY}/docs:latest
+    environment:
+      CHAT_UPSTREAM: http://gwchat:3000
+    depends_on:
+      gwchat:
+        condition: service_started
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8002:8000"
+      - "127.0.0.1:8003:8000"
     networks:
       - gw-network
     healthcheck:
@@ -25,6 +30,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
       IDENTITY_SERVER_URL: http://identity-server:8080
+      PUBLIC_MARKETING_SITE_URL: ${PUBLIC_MARKETING_SITE_URL:-https://graphwright.io/}
+      KGSERVER_SERVE_MKDOCS_SITE: "false"
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
