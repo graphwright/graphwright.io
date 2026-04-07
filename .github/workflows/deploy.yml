@@ -188,6 +188,16 @@ jobs:
           target: /opt/graphwright
           strip_components: 1
 
+      - name: Copy nginx config to droplet
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 137.184.49.99
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          source: "graphwright.io/nginx-staging.conf"
+          target: /tmp
+          strip_components: 1
+
       - name: Deploy to staging droplet
         uses: appleboy/ssh-action@v1
         with:
@@ -205,3 +215,6 @@ jobs:
             REGISTRY=ghcr.io/graphwright docker compose \
               -f docker-compose.prod.yml \
               up -d --pull always --remove-orphans
+
+            mv /tmp/nginx-staging.conf /etc/nginx/sites-enabled/kgraph
+            nginx -t && nginx -s reload
