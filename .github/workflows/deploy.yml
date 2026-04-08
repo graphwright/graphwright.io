@@ -181,27 +181,30 @@ jobs:
       - name: Copy compose file and gwchat config to droplet
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: 137.184.49.99
+          # host: 137.184.49.99
+          host: 104.131.171.175
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
           source: "graphwright.io/docker-compose.prod.yml,graphwright.io/gwchat-config"
           target: /opt/graphwright
           strip_components: 1
 
-      - name: Copy nginx config to droplet
+      - name: Copy nginx config to prod droplet
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: 137.184.49.99
+          # host: 137.184.49.99
+          host: 104.131.171.175
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
-          source: "graphwright.io/nginx-staging.conf"
+          source: "graphwright.io/nginx-prod.conf"
           target: /tmp
           strip_components: 1
 
-      - name: Deploy to staging droplet
+      - name: Deploy to prod droplet
         uses: appleboy/ssh-action@v1
         with:
-          host: 137.184.49.99
+          # host: 137.184.49.99
+          host: 104.131.171.175
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
           script: |
@@ -216,5 +219,5 @@ jobs:
               -f docker-compose.prod.yml \
               up -d --pull always --remove-orphans
 
-            mv /tmp/nginx-staging.conf /etc/nginx/sites-enabled/kgraph
+            mv /tmp/nginx-prod.conf /etc/nginx/sites-enabled/kgraph
             nginx -t && nginx -s reload
