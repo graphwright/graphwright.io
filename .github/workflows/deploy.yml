@@ -81,6 +81,7 @@ jobs:
             texlive-latex-extra \
             texlive-bibtex-extra \
             biber \
+            inkscape \
             make
 
       - name: Build kg-book PDF
