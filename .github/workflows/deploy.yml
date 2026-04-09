@@ -285,7 +285,7 @@ jobs:
               --password-stdin
 
             REGISTRY=ghcr.io/graphwright docker compose \
-              -f docker-compose.prod.yml \
+              --env-file /root/.env -f docker-compose.prod.yml \
               up -d --pull always --remove-orphans
 
             mv /tmp/nginx-prod.conf /etc/nginx/sites-enabled/kgraph
