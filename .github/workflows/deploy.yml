@@ -225,7 +225,10 @@ jobs:
               --username ${{ github.actor }} \
               --password-stdin
 
+            # Same as manual prod: secrets (POSTGRES_PASSWORD, etc.) live in /root/.env on the droplet.
+            # Really that stuff should be baked into the BuildEnv secrets mgr in GitHub. TODO
             REGISTRY=ghcr.io/graphwright docker compose \
+              --env-file /root/.env \
               -f docker-compose.prod.yml \
               up -d --pull always --remove-orphans
 
