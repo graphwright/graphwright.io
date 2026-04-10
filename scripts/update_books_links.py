@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update books.md to replace the identity-book PDF links with HTML section links.
+"""Update books.md to replace PDF download links with HTML section links.
 
 Usage: update_books_links.py <books.md>
 
@@ -18,6 +18,26 @@ REPLACEMENTS = [
     (
         "[Download PDF](../books/the-identity-server.pdf)",
         "[Read online](identity-book/)",
+    ),
+    (
+        "## [Knowledge Graphs from Unstructured Text]"
+        "(../books/knowledge-graphs-from-unstructured-text.pdf)",
+        "## [Knowledge Graphs from Unstructured Text]"
+        "(kg-book/)",
+    ),
+    (
+        "[Download PDF](../books/knowledge-graphs-from-unstructured-text.pdf)",
+        "[Read online](kg-book/)",
+    ),
+    (
+        "## [BFS-QL: A Graph Query Protocol for Language Models]"
+        "(../books/bfs-ql.pdf)",
+        "## [BFS-QL: A Graph Query Protocol for Language Models]"
+        "(bfs-ql-book/)",
+    ),
+    (
+        "[Download PDF](../books/bfs-ql.pdf)",
+        "[Read online](bfs-ql-book/)",
     ),
 ]
 

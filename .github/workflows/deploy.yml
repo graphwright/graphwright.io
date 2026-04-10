@@ -51,18 +51,6 @@ jobs:
           repository: graphwright/docs
           path: docs
 
-      - name: Checkout kg-book
-        uses: actions/checkout@v4
-        with:
-          repository: graphwright/kg-book
-          path: kg-book
-
-      - name: Checkout bfs-ql-book
-        uses: actions/checkout@v4
-        with:
-          repository: graphwright/bfs-ql-book
-          path: bfs-ql-book
-
       - name: Download identity-book bundle
         run: |
           ASSET_URL=$(curl -sf https://api.github.com/repos/graphwright/identity-book/releases/latest \
@@ -78,42 +66,54 @@ jobs:
           mkdir -p docs/docs/identity-book
           cp -r /tmp/identity-book/docs/. docs/docs/identity-book/
 
-      # Build docs site (MkDocs + book PDFs)
-      - name: Install PDF build dependencies
+      - name: Download kg-book bundle
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            pandoc \
-            texlive-xetex \
-            texlive-fonts-recommended \
-            texlive-fonts-extra \
-            texlive-latex-extra \
-            texlive-bibtex-extra \
-            biber \
-            inkscape \
-            lmodern \
-            make
-
-      - name: Build kg-book PDF
-        working-directory: kg-book
-        run: make text.pdf || true
-
-      - name: Build bfs-ql-book PDF
-        working-directory: bfs-ql-book
-        run: make text.pdf || true
-
-      - name: Collect PDFs
-        run: |
+          ASSET_URL=$(curl -sf https://api.github.com/repos/graphwright/kg-book/releases/latest \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print(r['assets'][0]['browser_download_url'])")
+          if [ -z "$ASSET_URL" ]; then
+            echo "ERROR: failed to resolve kg-book release asset URL" >&2
+            exit 1
+          fi
+          mkdir -p /tmp/kg-book
+          curl -fsSL "$ASSET_URL" | tar -xz -C /tmp/kg-book
           mkdir -p graphwright.io/books
-          cp kg-book/text.pdf graphwright.io/books/knowledge-graphs-from-unstructured-text.pdf || true
-          cp bfs-ql-book/text.pdf graphwright.io/books/bfs-ql.pdf || true
+          cp /tmp/kg-book/text.pdf graphwright.io/books/knowledge-graphs-from-unstructured-text.pdf
+          mkdir -p docs/docs/kg-book
+          cp -r /tmp/kg-book/docs/. docs/docs/kg-book/
 
-      - name: Integrate identity-book into docs site
+      - name: Download bfs-ql-book bundle
+        run: |
+          ASSET_URL=$(curl -sf https://api.github.com/repos/graphwright/bfs-ql-book/releases/latest \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print(r['assets'][0]['browser_download_url'])")
+          if [ -z "$ASSET_URL" ]; then
+            echo "ERROR: failed to resolve bfs-ql-book release asset URL" >&2
+            exit 1
+          fi
+          mkdir -p /tmp/bfs-ql-book
+          curl -fsSL "$ASSET_URL" | tar -xz -C /tmp/bfs-ql-book
+          mkdir -p graphwright.io/books
+          cp /tmp/bfs-ql-book/bfsql.pdf graphwright.io/books/bfs-ql.pdf
+          mkdir -p docs/docs/bfs-ql-book
+          cp -r /tmp/bfs-ql-book/docs/. docs/docs/bfs-ql-book/
+
+      - name: Integrate books into docs site
         run: |
           pip install pyyaml
-          python3 graphwright.io/scripts/inject_identity_book_nav.py \
+          python3 graphwright.io/scripts/inject_book_nav.py \
             /tmp/identity-book/mkdocs.yml \
-            docs/mkdocs.yml
+            docs/mkdocs.yml \
+            "The Identity Server" \
+            identity-book
+          python3 graphwright.io/scripts/inject_book_nav.py \
+            /tmp/kg-book/mkdocs.yml \
+            docs/mkdocs.yml \
+            "Knowledge Graphs from Unstructured Text" \
+            kg-book
+          python3 graphwright.io/scripts/inject_book_nav.py \
+            /tmp/bfs-ql-book/mkdocs.yml \
+            docs/mkdocs.yml \
+            "BFS-QL" \
+            bfs-ql-book
           python3 graphwright.io/scripts/update_books_links.py \
             docs/docs/books.md
 
