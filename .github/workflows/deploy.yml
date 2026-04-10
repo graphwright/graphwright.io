@@ -63,11 +63,20 @@ jobs:
           repository: graphwright/bfs-ql-book
           path: bfs-ql-book
 
-      - name: Checkout identity-book
-        uses: actions/checkout@v4
-        with:
-          repository: graphwright/identity-book
-          path: identity-book
+      - name: Download identity-book bundle
+        run: |
+          ASSET_URL=$(curl -sf https://api.github.com/repos/graphwright/identity-book/releases/latest \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print(r['assets'][0]['browser_download_url'])")
+          if [ -z "$ASSET_URL" ]; then
+            echo "ERROR: failed to resolve identity-book release asset URL" >&2
+            exit 1
+          fi
+          mkdir -p /tmp/identity-book
+          curl -fsSL "$ASSET_URL" | tar -xz -C /tmp/identity-book
+          mkdir -p graphwright.io/books
+          cp /tmp/identity-book/text.pdf graphwright.io/books/the-identity-server.pdf
+          mkdir -p docs/docs/identity-book
+          cp -r /tmp/identity-book/docs/. docs/docs/identity-book/
 
       # Build docs site (MkDocs + book PDFs)
       - name: Install PDF build dependencies
@@ -93,16 +102,20 @@ jobs:
         working-directory: bfs-ql-book
         run: make text.pdf || true
 
-      - name: Build identity-book PDF
-        working-directory: identity-book
-        run: make text.pdf || true
-
       - name: Collect PDFs
         run: |
           mkdir -p graphwright.io/books
           cp kg-book/text.pdf graphwright.io/books/knowledge-graphs-from-unstructured-text.pdf || true
           cp bfs-ql-book/text.pdf graphwright.io/books/bfs-ql.pdf || true
-          cp identity-book/text.pdf graphwright.io/books/the-identity-server.pdf || true
+
+      - name: Integrate identity-book into docs site
+        run: |
+          pip install pyyaml
+          python3 graphwright.io/scripts/inject_identity_book_nav.py \
+            /tmp/identity-book/mkdocs.yml \
+            docs/mkdocs.yml
+          python3 graphwright.io/scripts/update_books_links.py \
+            docs/docs/books.md
 
       - name: Build docs site
         working-directory: docs
